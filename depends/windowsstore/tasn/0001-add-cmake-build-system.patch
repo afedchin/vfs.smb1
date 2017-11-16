@@ -1,0 +1,172 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+new file mode 100644
+index 0000000..435e6ed
+--- /dev/null
++++ b/CMakeLists.txt
+@@ -0,0 +1,70 @@
++cmake_minimum_required(VERSION 3.0)
++
++project(libtasn1 VERSION 4.12 LANGUAGES C)
++
++add_library(libtasn1
++	lib/ASN1.c
++	lib/coding.c
++	lib/decoding.c
++	lib/element.c
++	lib/element.h
++	lib/errors.c
++	lib/gstr.c
++	lib/gstr.h
++	lib/int.h
++	lib/libtasn1.h
++	lib/Makefile.am
++	lib/parser_aux.c
++	lib/parser_aux.h
++	lib/structure.c
++	lib/structure.h
++	lib/version.c
++	lib/gllib/hash-pjw-bare.c
++	lib/gllib/hash-pjw-bare.h
++	lib/gllib/strverscmp.c)
++
++add_definitions(-DASN1_BUILDING -D_GL_ATTRIBUTE_PURE=
++               -DSIZEOF_UNSIGNED_LONG_INT=4 -DSIZEOF_UNSIGNED_INT=4 # TODO proper defines
++               -D_CRT_SECURE_NO_WARNINGS)
++
++target_include_directories(libtasn1
++  PRIVATE
++  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR};lib;lib/gllib>
++  INTERFACE
++  $<INSTALL_INTERFACE:include>
++)
++
++include(CMakePackageConfigHelpers)
++write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
++                                 VERSION ${PROJECT_VERSION}
++                                 COMPATIBILITY AnyNewerVersion)
++
++install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}
++  RUNTIME DESTINATION bin
++  ARCHIVE DESTINATION lib
++  LIBRARY DESTINATION lib
++)
++
++install(FILES lib/libtasn1.h
++        DESTINATION include)
++
++if(MSVC)
++	set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_PDB_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR} COMPILE_PDB_NAME ${PROJECT_NAME})
++	install(FILES ${PROJECT_BINARY_DIR}/RelWithDebInfo/${PROJECT_NAME}.pdb DESTINATION lib CONFIGURATIONS RelWithDebInfo)
++endif()
++
++install(EXPORT ${PROJECT_NAME}
++  FILE
++    ${PROJECT_NAME}.cmake
++  NAMESPACE
++    ${PROJECT_NAME}::
++  DESTINATION
++    lib/cmake/${PROJECT_NAME}
++)
++install(
++  FILES
++    cmake/${PROJECT_NAME}-config.cmake
++    ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
++  DESTINATION
++    lib/cmake/${PROJECT_NAME}
++)
+diff --git a/cmake/libtasn1-config.cmake b/cmake/libtasn1-config.cmake
+new file mode 100644
+index 0000000..b5ac41e
+--- /dev/null
++++ b/cmake/libtasn1-config.cmake
+@@ -0,0 +1 @@
++include(${CMAKE_CURRENT_LIST_DIR}/libtasn1.cmake)
+diff --git a/lib/coding.c b/lib/coding.c
+index 7141df7..7b3ed5a 100644
+--- a/lib/coding.c
++++ b/lib/coding.c
+@@ -597,7 +597,7 @@ _asn1_insert_tag_der (asn1_node node, unsigned char *der, int *counter,
+ {
+   asn1_node p;
+   int tag_len, is_tag_implicit;
+-  unsigned char class, class_implicit = 0, temp[MAX(SIZEOF_UNSIGNED_INT * 3 + 1, LTOSTR_MAX_SIZE)];
++  unsigned char class, class_implicit = 0, temp[max(SIZEOF_UNSIGNED_INT * 3 + 1, LTOSTR_MAX_SIZE)];
+   unsigned long tag_implicit = 0;
+   unsigned char tag_der[MAX_TAG_LEN];
+ 
+@@ -927,7 +927,7 @@ _asn1_ordering_set_of (unsigned char *der, int der_len, asn1_node node)
+       counter = 0;
+       while (p2_vet)
+ 	{
+-	  length = MIN(p_vet->end - counter, p2_vet->end - p_vet->end);
++	  length = min(p_vet->end - counter, p2_vet->end - p_vet->end);
+ 	  change = -1;
+ 	  for (k = 0; k < length; k++)
+ 	    if (der[counter + k] > der[p_vet->end + k])
+@@ -1015,7 +1015,7 @@ asn1_der_coding (asn1_node element, const char *name, void *ider, int *len,
+ 		 char *ErrorDescription)
+ {
+   asn1_node node, p, p2;
+-  unsigned char temp[MAX(LTOSTR_MAX_SIZE, SIZEOF_UNSIGNED_LONG_INT * 3 + 1)];
++  unsigned char temp[max(LTOSTR_MAX_SIZE, SIZEOF_UNSIGNED_LONG_INT * 3 + 1)];
+   int counter, counter_old, len2, len3, move, max_len, max_len_old;
+   int err;
+   unsigned char *der = ider;
+diff --git a/lib/gllib/hash-pjw-bare.c b/lib/gllib/hash-pjw-bare.c
+index df98147..ebc3b86 100644
+--- a/lib/gllib/hash-pjw-bare.c
++++ b/lib/gllib/hash-pjw-bare.c
+@@ -15,7 +15,7 @@
+    You should have received a copy of the GNU Lesser General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+ 
+-#include <config.h>
++//#include <config.h>
+ 
+ #include "hash-pjw-bare.h"
+ 
+diff --git a/lib/gllib/strverscmp.c b/lib/gllib/strverscmp.c
+index 0d8ac1c..7daddb9 100644
+--- a/lib/gllib/strverscmp.c
++++ b/lib/gllib/strverscmp.c
+@@ -17,7 +17,7 @@
+    License along with the GNU C Library; if not, see
+    <http://www.gnu.org/licenses/>.  */
+ 
+-#if !_LIBC
++#if !_LIBC && !defined(_MSC_VER)
+ # include <config.h>
+ #endif
+ 
+diff --git a/lib/parser_aux.c b/lib/parser_aux.c
+index 976ab38..1e378aa 100644
+--- a/lib/parser_aux.c
++++ b/lib/parser_aux.c
+@@ -553,7 +553,7 @@ _asn1_delete_list_and_nodes (void)
+     }
+ }
+ 
+-
++#pragma warning(disable:4146)
+ char *
+ _asn1_ltostr (int64_t v, char str[LTOSTR_MAX_SIZE])
+ {
+diff --git a/lib/version.c b/lib/version.c
+index 25f8a8f..291189f 100644
+--- a/lib/version.c
++++ b/lib/version.c
+@@ -41,6 +41,11 @@
+  * Returns: Version string of run-time library, or %NULL if the
+  *   run-time library does not meet the required version number.
+  */
++#ifdef _MSC_VER
++extern int __strverscmp(const char *s1, const char *s2);
++#define strverscmp __strverscmp
++#endif
++
+ const char *
+ asn1_check_version (const char *req_version)
+ {
+-- 
+2.10.2.windows.1
+

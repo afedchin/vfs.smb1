@@ -1,0 +1,2329 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+new file mode 100644
+index 0000000..e90682a
+--- /dev/null
++++ b/CMakeLists.txt
+@@ -0,0 +1,115 @@
++cmake_minimum_required(VERSION 3.0)
++
++project(libdsm VERSION 0.2.8 LANGUAGES C)
++
++find_package(iconv REQUIRED NO_MODULE)
++find_package(libtasn1 REQUIRED NO_MODULE)
++find_package(openssl)
++
++add_library(compat 
++  compat/clock_gettime.c
++  compat/compat.c
++  compat/compat.h
++  compat/queue.h
++  compat/strlcpy.c
++  compat/strndup.c
++  msvc/winpthreads.c
++  msvc/winpthreads.h)
++
++target_include_directories(compat
++  PRIVATE
++  $<BUILD_INTERFACE:compat;msvc>
++)
++
++set(contrib_SOURCES 
++  contrib/rc4/rc4.c
++  contrib/rc4/rc4.h
++  msvc/spnego_asn1.c
++  contrib/spnego/spnego_asn1.h)
++
++if(NOT openssl_FOUND)
++  list(APPEND contrib_SOURCES
++    contrib/mdx/md4.c
++    contrib/mdx/md4.h
++    contrib/mdx/md5.c
++    contrib/mdx/md5.h)
++endif()
++
++add_library(contrib ${contrib_SOURCES})
++target_include_directories(contrib
++  PRIVATE
++  $<BUILD_INTERFACE:contrib;compat;msvc;${OPENSSL_INCLUDE_DIRS}>
++)
++target_link_libraries(contrib PRIVATE libtasn1::libtasn1)
++
++file(GLOB_RECURSE LIBDSM_SOURCES ${CMAKE_SOURCE_DIR}/src/*.c)
++file(GLOB_RECURSE LIBDSM_HEADERS ${CMAKE_SOURCE_DIR}/src/*.h)
++
++add_library(libdsm STATIC
++		${LIBDSM_SOURCES}
++		${LIBDSM_HEADERS})
++
++add_definitions(-DHAVE_CONFIG_H -D_WINSOCK_DEPRECATED_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS 
++				-D_CRT_RAND_S -DASN1_STATIC)
++
++set(depends_LIBS
++  compat
++  contrib
++  iconv::iconv
++  libtasn1::libtasn1
++)
++
++if(openssl_FOUND)
++  list(APPEND depends_LIBS openssl::openssl)
++endif()
++if(MSVC)
++  list(APPEND depends_LIBS ws2_32.lib)
++endif()
++
++target_link_libraries(libdsm PUBLIC ${depends_LIBS})
++target_include_directories(libdsm
++  PRIVATE
++  $<BUILD_INTERFACE:include;contrib;compat;msvc>
++  INTERFACE
++  $<INSTALL_INTERFACE:include>
++)
++
++include(CMakePackageConfigHelpers)
++write_basic_package_version_file(
++  ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
++  VERSION ${PROJECT_VERSION}
++  COMPATIBILITY AnyNewerVersion
++)
++
++install(TARGETS libdsm contrib compat EXPORT ${PROJECT_NAME}
++  RUNTIME DESTINATION bin
++  LIBRARY DESTINATION lib
++  ARCHIVE DESTINATION lib
++)
++
++install(DIRECTORY include/ DESTINATION include)
++
++if(MSVC)
++  set_target_properties(libdsm PROPERTIES 
++    COMPILE_PDB_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR} 
++    COMPILE_PDB_NAME libdsm
++    WINDOWS_EXPORT_ALL_SYMBOLS ON)
++  target_compile_definitions(libdsm PRIVATE -DHAVE_WINPTHREADS)
++  install(FILES ${PROJECT_BINARY_DIR}/RelWithDebInfo/libdsm.pdb DESTINATION lib CONFIGURATIONS RelWithDebInfo)
++endif()
++
++install(EXPORT ${PROJECT_NAME}
++  FILE
++    ${PROJECT_NAME}.cmake
++  NAMESPACE
++    ${PROJECT_NAME}::
++  DESTINATION
++    lib/cmake/${PROJECT_NAME}
++)
++install(
++  FILES
++    cmake/${PROJECT_NAME}-config.cmake
++    ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
++  DESTINATION
++    lib/cmake/${PROJECT_NAME}
++)
+diff --git a/cmake/libdsm-config.cmake b/cmake/libdsm-config.cmake
+new file mode 100644
+index 0000000..25607fc
+--- /dev/null
++++ b/cmake/libdsm-config.cmake
+@@ -0,0 +1 @@
++include(${CMAKE_CURRENT_LIST_DIR}/libdsm.cmake)
+diff --git a/configure.ac b/configure.ac
+index a668f99..0bb5a28 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -107,7 +107,7 @@ AC_CHECK_DECLS([CLOCK_MONOTONIC],,,[
+ AC_REPLACE_FUNCS([strlcpy])
+ AC_REPLACE_FUNCS([strndup])
+ AC_REPLACE_FUNCS([clock_gettime])
+-AC_CHECK_FUNCS([pipe _pipe getifaddrs])
++AC_CHECK_FUNCS([pipe getifaddrs])
+ 
+ AC_CHECK_HEADERS([bsd/string.h langinfo.h alloca.h sys/queue.h arpa/inet.h sys/socket.h sys/time.h ifaddrs.h])
+ 
+diff --git a/msvc/config.h b/msvc/config.h
+new file mode 100644
+index 0000000..32a78d3
+--- /dev/null
++++ b/msvc/config.h
+@@ -0,0 +1,165 @@
++/* config.h.  Generated from config.h.in by configure.  */
++/* config.h.in.  Generated from configure.ac by autoheader.  */
++
++/* ... */
++#define ASN1_ARRAY_TYPE asn1_static_node
++
++/* Define to 1 if you have the <alloca.h> header file. */
++/* #undef HAVE_ALLOCA_H */
++
++/* Define to 1 if you have the <arpa/inet.h> header file. */
++/* #undef HAVE_ARPA_INET_H */
++
++/* Define to 1 if you have the <bsd/string.h> header file. */
++/* #undef HAVE_BSD_STRING_H */
++
++/* Define to 1 if the system has the type `clockid_t'. */
++// #define HAVE_CLOCKID_T 1
++
++/* Define to 1 if you have the `clock_gettime' function. */
++#define HAVE_CLOCK_GETTIME 1
++
++/* Define to 1 if you have the declaration of `CLOCK_MONOTONIC', and to 0 if
++   you don't. */
++//#define HAVE_DECL_CLOCK_MONOTONIC 1
++
++/* Define to 1 if you have the <dlfcn.h> header file. */
++#define HAVE_DLFCN_H 1
++
++/* Define to 1 if you have the `getifaddrs' function. */
++/* #undef HAVE_GETIFADDRS */
++
++/* Define if you have the iconv() function and it works. */
++#define HAVE_ICONV 1
++
++/* Define to 1 if you have the <ifaddrs.h> header file. */
++/* #undef HAVE_IFADDRS_H */
++
++/* Define to 1 if you have the <inttypes.h> header file. */
++#define HAVE_INTTYPES_H 1
++
++/* Define to 1 if you have the <langinfo.h> header file. */
++/* #undef HAVE_LANGINFO_H */
++
++/* Does this system have libbsd strl*** functions implementation */
++/* #undef HAVE_LIBBSD */
++
++/* Define to 1 if you have the <memory.h> header file. */
++#define HAVE_MEMORY_H 1
++
++/* Define to 1 if you have the `pipe' function. */
++/* #undef HAVE_PIPE */
++
++/* Define if you have POSIX threads libraries and header files. */
++#define HAVE_PTHREAD 1
++
++/* Have PTHREAD_PRIO_INHERIT. */
++#define HAVE_PTHREAD_PRIO_INHERIT 1
++
++/* Define to 1 if you have the <stdint.h> header file. */
++#define HAVE_STDINT_H 1
++
++/* Define to 1 if you have the <stdlib.h> header file. */
++#define HAVE_STDLIB_H 1
++
++/* Define to 1 if you have the <strings.h> header file. */
++//#define HAVE_STRINGS_H 1
++
++/* Define to 1 if you have the <string.h> header file. */
++#define HAVE_STRING_H 1
++
++/* Define to 1 if you have the `strlcpy' function. */
++/* #undef HAVE_STRLCPY */
++
++/* Define to 1 if you have the `strndup' function. */
++/* #undef HAVE_STRNDUP */
++
++/* Define to 1 if the system has the type `struct timespec'. */
++#define HAVE_STRUCT_TIMESPEC 1
++
++/* Define to 1 if you have the <sys/queue.h> header file. */
++/* #undef HAVE_SYS_QUEUE_H */
++
++/* Define to 1 if you have the <sys/socket.h> header file. */
++/* #undef HAVE_SYS_SOCKET_H */
++
++/* Define to 1 if you have the <sys/stat.h> header file. */
++#define HAVE_SYS_STAT_H 1
++
++/* Define to 1 if you have the <sys/time.h> header file. */
++//#define HAVE_SYS_TIME_H 1
++
++/* Define to 1 if you have the <sys/types.h> header file. */
++#define HAVE_SYS_TYPES_H 1
++
++/* libtasn1 has v 3.0 downcase types */
++#define HAVE_TASN1_3PLUS 1
++
++/* Define to 1 if you have the <unistd.h> header file. */
++#define HAVE_UNISTD_H 1
++
++/* Define as const if the declaration of iconv() needs const. */
++#define ICONV_CONST 
++
++/* Define to the sub-directory where libtool stores uninstalled libraries. */
++#define LT_OBJDIR ".libs/"
++
++/* Name of package */
++#define PACKAGE "libdsm"
++
++/* Define to the address where bug reports for this package should be sent. */
++#define PACKAGE_BUGREPORT ""
++
++/* Define to the full name of this package. */
++#define PACKAGE_NAME "libdsm"
++
++/* Define to the full name and version of this package. */
++#define PACKAGE_STRING "libdsm 0.2.8-dirty"
++
++/* Define to the one symbol short name of this package. */
++#define PACKAGE_TARNAME "libdsm"
++
++/* Define to the home page for this package. */
++#define PACKAGE_URL ""
++
++/* Define to the version of this package. */
++#define PACKAGE_VERSION "0.2.8-dirty"
++
++/* Define to necessary symbol if this constant uses a non-standard name on
++   your system. */
++/* #undef PTHREAD_CREATE_JOINABLE */
++
++/* Define to 1 if you have the ANSI C header files. */
++#define STDC_HEADERS 1
++
++/* Define to 1 for Unicode (Wide Chars) APIs. */
++#define UNICODE 1
++
++/* Path of the random number generation device */
++#define URANDOM "/dev/urandom"
++
++/* Version number of package */
++#define VERSION "0.2.8-dirty"
++
++/* Define to 64 for large files support. */
++#define _FILE_OFFSET_BITS 64
++
++/* Define to 2 to get glibc warnings. */
++#define _FORTIFY_SOURCE 2
++
++/* Extensions to ISO C89 from ISO C99. */
++#define _ISOC99_SOURCE 1
++
++/* IEEE Std 1003.1. */
++#define _POSIX_C_SOURCE 200809L
++
++/* IEEE Std 1003.1. */
++#define _POSIX_SOURCE 1
++
++/* Define to 1 for Unicode (Wide Chars) APIs. */
++#define _UNICODE 1
++
++/* ... */
++/* #undef asn1_static_node */
++
++#include "compat.h"
+diff --git a/msvc/getopt.h b/msvc/getopt.h
+new file mode 100644
+index 0000000..ff0251d
+--- /dev/null
++++ b/msvc/getopt.h
+@@ -0,0 +1,193 @@
++/* Declarations for getopt.
++   Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2009
++   Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, write to the Free
++   Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
++   02111-1307 USA.  */
++
++#ifndef _GETOPT_H
++
++#ifndef __need_getopt
++# define _GETOPT_H 1
++#endif
++
++/* If __GNU_LIBRARY__ is not already defined, either we are being used
++   standalone, or this is the first header included in the source file.
++   If we are being used with glibc, we need to include <features.h>, but
++   that does not exist if we are standalone.  So: if __GNU_LIBRARY__ is
++   not defined, include <ctype.h>, which will pull in <features.h> for us
++   if it's from glibc.  (Why ctype.h?  It's guaranteed to exist and it
++   doesn't flood the namespace with stuff the way some other headers do.)  */
++#if !defined __GNU_LIBRARY__
++# include <ctype.h>
++#endif
++
++#ifndef __THROW
++# ifndef __GNUC_PREREQ
++#  define __GNUC_PREREQ(maj, min) (0)
++# endif
++# if defined __cplusplus && __GNUC_PREREQ (2,8)
++#  define __THROW	throw ()
++# else
++#  define __THROW
++# endif
++#endif
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++/* For communication from `getopt' to the caller.
++   When `getopt' finds an option that takes an argument,
++   the argument value is returned here.
++   Also, when `ordering' is RETURN_IN_ORDER,
++   each non-option ARGV-element is returned here.  */
++
++extern char *optarg;
++
++/* Index in ARGV of the next element to be scanned.
++   This is used for communication to and from the caller
++   and for communication between successive calls to `getopt'.
++
++   On entry to `getopt', zero means this is the first call; initialize.
++
++   When `getopt' returns -1, this is the index of the first of the
++   non-option elements that the caller should itself scan.
++
++   Otherwise, `optind' communicates from one call to the next
++   how much of ARGV has been scanned so far.  */
++
++extern int optind;
++
++/* Callers store zero here to inhibit the error message `getopt' prints
++   for unrecognized options.  */
++
++extern int opterr;
++
++/* Set to an option character which was unrecognized.  */
++
++extern int optopt;
++
++#ifndef __need_getopt
++/* Describe the long-named options requested by the application.
++   The LONG_OPTIONS argument to getopt_long or getopt_long_only is a vector
++   of `struct option' terminated by an element containing a name which is
++   zero.
++
++   The field `has_arg' is:
++   no_argument		(or 0) if the option does not take an argument,
++   required_argument	(or 1) if the option requires an argument,
++   optional_argument 	(or 2) if the option takes an optional argument.
++
++   If the field `flag' is not NULL, it points to a variable that is set
++   to the value given in the field `val' when the option is found, but
++   left unchanged if the option is not found.
++
++   To have a long-named option do something other than set an `int' to
++   a compiled-in constant, such as set a value from `optarg', set the
++   option's `flag' field to zero and its `val' field to a nonzero
++   value (the equivalent single-letter option character, if there is
++   one).  For long options that have a zero `flag' field, `getopt'
++   returns the contents of the `val' field.  */
++
++struct option
++{
++  const char *name;
++  /* has_arg can't be an enum because some compilers complain about
++     type mismatches in all the code that assumes it is an int.  */
++  int has_arg;
++  int *flag;
++  int val;
++};
++
++/* Names for the values of the `has_arg' field of `struct option'.  */
++
++# define no_argument		0
++# define required_argument	1
++# define optional_argument	2
++#endif	/* need getopt */
++
++
++/* Get definitions and prototypes for functions to process the
++   arguments in ARGV (ARGC of them, minus the program name) for
++   options given in OPTS.
++
++   Return the option character from OPTS just read.  Return -1 when
++   there are no more options.  For unrecognized options, or options
++   missing arguments, `optopt' is set to the option letter, and '?' is
++   returned.
++
++   The OPTS string is a list of characters which are recognized option
++   letters, optionally followed by colons, specifying that that letter
++   takes an argument, to be placed in `optarg'.
++
++   If a letter in OPTS is followed by two colons, its argument is
++   optional.  This behavior is specific to the GNU `getopt'.
++
++   The argument `--' causes premature termination of argument
++   scanning, explicitly telling `getopt' that there are no more
++   options.
++
++   If OPTS begins with `--', then non-option arguments are treated as
++   arguments to the option '\0'.  This behavior is specific to the GNU
++   `getopt'.  */
++
++#ifdef __GNU_LIBRARY__
++/* Many other libraries have conflicting prototypes for getopt, with
++   differences in the consts, in stdlib.h.  To avoid compilation
++   errors, only prototype getopt for the GNU C library.  */
++extern int getopt (int ___argc, char *const *___argv, const char *__shortopts)
++       __THROW;
++
++# if defined __need_getopt && defined __USE_POSIX2 \
++  && !defined __USE_POSIX_IMPLICITLY && !defined __USE_GNU
++/* The GNU getopt has more functionality than the standard version.  The
++   additional functionality can be disable at runtime.  This redirection
++   helps to also do this at runtime.  */
++#  ifdef __REDIRECT
++  extern int __REDIRECT (getopt, (int ___argc, char *const *___argv,
++				  const char *__shortopts),
++			 __posix_getopt) __THROW;
++#  else
++extern int __posix_getopt (int ___argc, char *const *___argv,
++			   const char *__shortopts) __THROW;
++#   define getopt __posix_getopt
++#  endif
++# endif
++#else /* not __GNU_LIBRARY__ */
++extern int getopt ();
++#endif /* __GNU_LIBRARY__ */
++
++#ifndef __need_getopt
++extern int getopt_long (int ___argc, char *const *___argv,
++			const char *__shortopts,
++		        const struct option *__longopts, int *__longind)
++       __THROW;
++extern int getopt_long_only (int ___argc, char *const *___argv,
++			     const char *__shortopts,
++		             const struct option *__longopts, int *__longind)
++       __THROW;
++
++#endif
++
++#ifdef	__cplusplus
++}
++#endif
++
++/* Make sure we later can get all the definitions and declarations.  */
++#undef __need_getopt
++
++#endif /* getopt.h */
+diff --git a/msvc/spnego_asn1.c b/msvc/spnego_asn1.c
+new file mode 100644
+index 0000000..b152f77
+--- /dev/null
++++ b/msvc/spnego_asn1.c
+@@ -0,0 +1,70 @@
++#if HAVE_CONFIG_H
++# include "config.h"
++#endif
++
++#include <libtasn1.h>
++
++const asn1_static_node spnego_asn1_conf[] = {
++  { "SPNEGO", 536872976, NULL },
++  { NULL, 1073741836, NULL },
++  { "MechType", 1073741836, NULL },
++  { "MechTypeList", 1610612747, NULL },
++  { NULL, 2, "MechType"},
++  { "ContextFlags", 1610874886, NULL },
++  { "delegFlag", 1073741825, "0"},
++  { "mutualFlag", 1073741825, "1"},
++  { "replayFlag", 1073741825, "2"},
++  { "sequenceFlag", 1073741825, "3"},
++  { "anonFlag", 1073741825, "4"},
++  { "confFlag", 1073741825, "5"},
++  { "integFlag", 1, "6"},
++  { "NegHints", 1610612741, NULL },
++  { "hintName", 1610637339, NULL },
++  { NULL, 2056, "0"},
++  { "hintAddress", 536895495, NULL },
++  { NULL, 2056, "1"},
++  { "NegTokenInitWin", 1610612741, NULL },
++  { "mechTypes", 1610620930, "MechTypeList"},
++  { NULL, 2056, "0"},
++  { "reqFlags", 1610637314, "ContextFlags"},
++  { NULL, 2056, "1"},
++  { "mechToken", 1610637319, NULL },
++  { NULL, 2056, "2"},
++  { "negHints", 536895490, "NegHints"},
++  { NULL, 2056, "3"},
++  { "NegTokenInit", 1610612741, NULL },
++  { "mechTypes", 1610620930, "MechTypeList"},
++  { NULL, 2056, "0"},
++  { "reqFlags", 1610637314, "ContextFlags"},
++  { NULL, 2056, "1"},
++  { "mechToken", 1610637319, NULL },
++  { NULL, 2056, "2"},
++  { "mechListMIC", 536895495, NULL },
++  { NULL, 2056, "3"},
++  { "NegTokenResp", 1610612741, NULL },
++  { "negResult", 1610899477, NULL },
++  { NULL, 1073743880, "0"},
++  { "accept_completed", 1073741825, "0"},
++  { "accept_incomplete", 1073741825, "1"},
++  { "reject", 1073741825, "2"},
++  { "request-mic", 1, "3"},
++  { "supportedMech", 1610637314, "MechType"},
++  { NULL, 2056, "1"},
++  { "responseToken", 1610637319, NULL },
++  { NULL, 2056, "2"},
++  { "mechListMIC", 536895495, NULL },
++  { NULL, 2056, "3"},
++  { "NegotiationToken", 1610612754, NULL },
++  { "negTokenInit", 1610620930, "NegTokenInit"},
++  { NULL, 2056, "0"},
++  { "negTokenResp", 536879106, "NegTokenResp"},
++  { NULL, 2056, "1"},
++  { "NegotiationTokenWin", 1610612754, NULL },
++  { "negTokenInit", 536879106, "NegTokenInitWin"},
++  { NULL, 2056, "0"},
++  { "GSSAPIContextToken", 536879109, NULL },
++  { NULL, 1073746952, "0"},
++  { "thisMech", 1073741826, "MechType"},
++  { "spnego", 2, "NegotiationToken"},
++  { NULL, 0, NULL }
++};
+diff --git a/msvc/unistd.h b/msvc/unistd.h
+new file mode 100644
+index 0000000..4799c2b
+--- /dev/null
++++ b/msvc/unistd.h
+@@ -0,0 +1,47 @@
++/*
++ * This file is part of the Mingw32 package.
++ *
++ * unistd.h maps (roughly) to io.h
++ */
++
++#ifndef _UNISTD_H
++#define _UNISTD_H
++
++#include <io.h>
++#include <process.h>
++
++#define __UNISTD_GETOPT__
++#include <getopt.h>
++#undef __UNISTD_GETOPT__
++
++/* These are also defined in stdio.h. */
++#ifndef	SEEK_SET
++#define SEEK_SET 0
++#endif
++
++#ifndef	SEEK_CUR
++#define SEEK_CUR 1
++#endif
++
++#ifndef SEEK_END
++#define SEEK_END 2
++#endif
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++
++/* This is defined as a real library function to allow autoconf
++   to verify its existence. */
++//int ftruncate(int, off_t);
++//__CRT_INLINE int ftruncate(int __fd, off_t __length)
++//{
++//  return _chsize (__fd, __length);
++//}
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* _UNISTD_H */
+diff --git a/msvc/winpthreads.c b/msvc/winpthreads.c
+new file mode 100644
+index 0000000..be1ebea
+--- /dev/null
++++ b/msvc/winpthreads.c
+@@ -0,0 +1,1247 @@
++/*
++ * Posix Threads library for Microsoft Windows
++ *
++ * Use at own risk, there is no implied warranty to this code.
++ * It uses undocumented features of Microsoft Windows that can change
++ * at any time in the future.
++ *
++ * (C) 2010 Lockless Inc.
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without modification,
++ * are permitted provided that the following conditions are met:
++ *
++ *
++ *  * Redistributions of source code must retain the above copyright notice,
++ *    this list of conditions and the following disclaimer.
++ *  * Redistributions in binary form must reproduce the above copyright notice,
++ *    this list of conditions and the following disclaimer in the documentation
++ *    and/or other materials provided with the distribution.
++ *  * Neither the name of Lockless Inc. nor the names of its contributors may be
++ *    used to endorse or promote products derived from this software without
++ *    specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AN
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
++ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
++ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
++ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
++ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
++ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
++ * OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++/*
++ * Version 1.0.1 Released 2 Feb 2012
++ * Fixes pthread_barrier_destroy() to wait for threads to exit the barrier.
++ */
++
++#include "winpthreads.h"
++#include <sys/timeb.h>
++#include <setjmp.h>
++#include <intrin.h>
++#include <process.h>
++
++typedef struct _pthread_cleanup _pthread_cleanup;
++struct _pthread_cleanup
++{
++  void (*func)(void *);
++  void *arg;
++  _pthread_cleanup *next;
++};
++
++struct _pthread_v
++{
++  void *ret_arg;
++  void *(* func)(void *);
++  _pthread_cleanup *clean;
++  HANDLE h;
++  int cancelled;
++  unsigned p_state;
++  unsigned keymax;
++  void **keyval;
++
++  jmp_buf jb;
++};
++
++volatile long _pthread_cancelling;
++
++int _pthread_concur;
++
++/* Will default to zero as needed */
++pthread_once_t _pthread_tls_once;
++DWORD _pthread_tls;
++
++/* Note initializer is zero, so this works */
++pthread_rwlock_t _pthread_key_lock;
++unsigned _pthread_key_max;
++unsigned _pthread_key_sch;
++void (**_pthread_key_dest)(void *);
++
++
++#define pthread_cleanup_push(F, A)\
++{\
++  const _pthread_cleanup _pthread_cup = {(F), (A), pthread_self()->clean};\
++  _ReadWriteBarrier();\
++  pthread_self()->clean = (_pthread_cleanup *) &_pthread_cup;\
++  _ReadWriteBarrier()
++
++/* Note that if async cancelling is used, then there is a race here */
++#define pthread_cleanup_pop(E)\
++  (pthread_self()->clean = _pthread_cup.next, (E ? _pthread_cup.func(_pthread_cup.arg) : 0));}
++
++static void _pthread_once_cleanup(pthread_once_t *o)
++{
++  *o = 0;
++}
++
++int pthread_once(pthread_once_t *o, void (*func)(void))
++{
++  long state = *o;
++
++  _ReadWriteBarrier();
++
++  while (state != 1)
++  {
++    if (!state)
++    {
++      if (!_InterlockedCompareExchange(o, 2, 0))
++      {
++        /* Success */
++        pthread_cleanup_push((void(*)(void*))_pthread_once_cleanup, o);
++        func();
++        pthread_cleanup_pop(0);
++
++        /* Mark as done */
++        *o = 1;
++
++        return 0;
++      }
++    }
++
++    YieldProcessor();
++
++    _ReadWriteBarrier();
++
++    state = *o;
++  }
++
++  /* Done */
++  return 0;
++}
++
++static int _pthread_once_raw(pthread_once_t *o, void (*func)(void))
++{
++  long state = *o;
++
++  _ReadWriteBarrier();
++
++  while (state != 1)
++  {
++    if (!state)
++    {
++      if (!_InterlockedCompareExchange(o, 2, 0))
++      {
++        /* Success */
++        func();
++
++        /* Mark as done */
++        *o = 1;
++
++        return 0;
++      }
++    }
++
++    YieldProcessor();
++
++    _ReadWriteBarrier();
++
++    state = *o;
++  }
++
++  /* Done */
++  return 0;
++}
++
++int pthread_mutex_lock(pthread_mutex_t *m)
++{
++  EnterCriticalSection(m);
++  return 0;
++}
++
++int pthread_mutex_unlock(pthread_mutex_t *m)
++{
++  LeaveCriticalSection(m);
++  return 0;
++}
++
++int pthread_mutex_trylock(pthread_mutex_t *m)
++{
++  return TryEnterCriticalSection(m) ? 0 : EBUSY;
++}
++
++int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a)
++{
++  (void) a;
++  InitializeCriticalSection(m);
++
++  return 0;
++}
++
++int pthread_mutex_destroy(pthread_mutex_t *m)
++{
++  DeleteCriticalSection(m);
++  return 0;
++}
++
++int pthread_equal(pthread_t t1, pthread_t t2)
++{
++  return t1 == t2;
++}
++
++int pthread_rwlock_init(pthread_rwlock_t *l, pthread_rwlockattr_t *a)
++{
++  (void) a;
++  InitializeSRWLock(l);
++
++  return 0;
++}
++
++int pthread_rwlock_destroy(pthread_rwlock_t *l)
++{
++  (void) *l;
++  return 0;
++}
++
++int pthread_rwlock_rdlock(pthread_rwlock_t *l)
++{
++  pthread_testcancel();
++  AcquireSRWLockShared(l);
++
++  return 0;
++}
++
++int pthread_rwlock_wrlock(pthread_rwlock_t *l)
++{
++  pthread_testcancel();
++  AcquireSRWLockExclusive(l);
++
++  return 0;
++}
++
++int pthread_rwlock_unlock(pthread_rwlock_t *l)
++{
++  void *state = *(void **)l;
++
++  if (state == (void *)1)
++  {
++    /* Known to be an exclusive lock */
++    ReleaseSRWLockExclusive(l);
++  }
++  else
++  {
++    /* A shared unlock will work */
++    ReleaseSRWLockShared(l);
++  }
++
++  return 0;
++}
++
++int pthread_rwlock_tryrdlock(pthread_rwlock_t *l)
++{
++  /* Get the current state of the lock */
++  void *state = *(void **)l;
++
++  if (!state)
++  {
++    /* Unlocked to locked */
++    if (!_InterlockedCompareExchangePointer((void *volatile *)l, (void *)0x11, NULL)) return 0;
++    return EBUSY;
++  }
++
++  /* A single writer exists */
++  if (state == (void *)1) return EBUSY;
++
++  /* Multiple writers exist? */
++  if ((uintptr_t)state & 14) return EBUSY;
++
++  if (_InterlockedCompareExchangePointer((void *volatile *)l, (void *)((uintptr_t)state + 16), state) == state) return 0;
++
++  return EBUSY;
++}
++
++int pthread_rwlock_trywrlock(pthread_rwlock_t *l)
++{
++  /* Try to grab lock if it has no users */
++  if (!_InterlockedCompareExchangePointer((void *volatile *)l, (void *)1, NULL)) return 0;
++
++  return EBUSY;
++}
++
++void pthread_tls_init(void)
++{
++  _pthread_tls = TlsAlloc();
++
++  /* Cannot continue if out of indexes */
++  if (_pthread_tls == TLS_OUT_OF_INDEXES) abort();
++}
++
++static void _pthread_cleanup_dest(pthread_t t)
++{
++  unsigned i, j;
++
++  for (j = 0; j < PTHREAD_DESTRUCTOR_ITERATIONS; j++)
++  {
++    int flag = 0;
++
++    for (i = 0; i < t->keymax; i++)
++    {
++      void *val = t->keyval[i];
++
++      if (val)
++      {
++        pthread_rwlock_rdlock(&_pthread_key_lock);
++        if ((uintptr_t) _pthread_key_dest[i] > 1)
++        {
++          /* Call destructor */
++          t->keyval[i] = NULL;
++          _pthread_key_dest[i](val);
++          flag = 1;
++        }
++        pthread_rwlock_unlock(&_pthread_key_lock);
++      }
++    }
++
++    /* Nothing to do? */
++    if (!flag) return;
++  }
++}
++
++pthread_t pthread_self(void)
++{
++  pthread_t t;
++
++  _pthread_once_raw(&_pthread_tls_once, pthread_tls_init);
++
++  t = (struct _pthread_v*)TlsGetValue(_pthread_tls);
++  /* Main thread? */
++  if (!t)
++  {
++    t = (struct _pthread_v*)malloc(sizeof(struct _pthread_v));
++
++    /* If cannot initialize main thread, then the only thing we can do is abort */
++    if (!t) abort();
++
++    t->ret_arg = NULL;
++    t->func = NULL;
++    t->clean = NULL;
++    t->cancelled = 0;
++    t->p_state = PTHREAD_DEFAULT_ATTR;
++    t->keymax = 0;
++    t->keyval = NULL;
++    t->h = GetCurrentThread();
++
++    /* Save for later */
++    TlsSetValue(_pthread_tls, t);
++
++    if (setjmp(t->jb))
++    {
++      /* Make sure we free ourselves if we are detached */
++      if (!t->h) free(t);
++
++      /* Time to die */
++      _endthreadex(0);
++    }
++  }
++
++  return t;
++}
++
++static unsigned long long _pthread_time_in_ms(void)
++{
++  struct __timeb64 tb;
++
++  _ftime64(&tb);
++
++  return tb.time * 1000 + tb.millitm;
++}
++
++static unsigned long long _pthread_time_in_ms_from_timespec(const struct timespec *ts)
++{
++  unsigned long long t = ts->tv_sec * 1000;
++  t += ts->tv_nsec / 1000000;
++
++  return t;
++}
++
++static unsigned long long _pthread_rel_time_in_ms(const struct timespec *ts)
++{
++  unsigned long long t1 = _pthread_time_in_ms_from_timespec(ts);
++  unsigned long long t2 = _pthread_time_in_ms();
++
++  /* Prevent underflow */
++  if (t1 < t2) return 0;
++  return t1 - t2;
++}
++
++int pthread_rwlock_timedrdlock(pthread_rwlock_t *l, const struct timespec *ts)
++{
++  unsigned long long ct = _pthread_time_in_ms();
++  unsigned long long t = _pthread_time_in_ms_from_timespec(ts);
++
++  pthread_testcancel();
++
++  /* Use a busy-loop */
++  while (1)
++  {
++    /* Try to grab lock */
++    if (!pthread_rwlock_tryrdlock(l)) return 0;
++
++    /* Get current time */
++    ct = _pthread_time_in_ms();
++
++    /* Have we waited long enough? */
++    if (ct > t) return ETIMEDOUT;
++  }
++}
++
++int pthread_rwlock_timedwrlock(pthread_rwlock_t *l, const struct timespec *ts)
++{
++  unsigned long long ct = _pthread_time_in_ms();
++  unsigned long long t = _pthread_time_in_ms_from_timespec(ts);
++
++  pthread_testcancel();
++
++  /* Use a busy-loop */
++  while (1)
++  {
++    /* Try to grab lock */
++    if (!pthread_rwlock_trywrlock(l)) return 0;
++
++    /* Get current time */
++    ct = _pthread_time_in_ms();
++
++    /* Have we waited long enough? */
++    if (ct > t) return ETIMEDOUT;
++  }
++}
++
++int pthread_get_concurrency(int *val)
++{
++  *val = _pthread_concur;
++  return 0;
++}
++
++int pthread_set_concurrency(int val)
++{
++  _pthread_concur = val;
++  return 0;
++}
++
++int pthread_exit(void *res)
++{
++  pthread_t t = pthread_self();
++
++  t->ret_arg = res;
++
++  _pthread_cleanup_dest(t);
++
++  longjmp(t->jb, 1);
++}
++
++
++static void _pthread_invoke_cancel(void)
++{
++  _pthread_cleanup *pcup;
++
++  _InterlockedDecrement(&_pthread_cancelling);
++
++  /* Call cancel queue */
++  for (pcup = pthread_self()->clean; pcup; pcup = pcup->next)
++  {
++    pcup->func(pcup->arg);
++  }
++
++  pthread_exit(PTHREAD_CANCELED);
++}
++
++void pthread_testcancel(void)
++{
++  if (_pthread_cancelling)
++  {
++    pthread_t t = pthread_self();
++
++    if (t->cancelled && (t->p_state & PTHREAD_CANCEL_ENABLE))
++    {
++      _pthread_invoke_cancel();
++    }
++  }
++}
++
++
++int pthread_cancel(pthread_t t)
++{
++#if !defined(WINAPI_FAMILY) || (WINAPI_FAMILY != WINAPI_FAMILY_APP)
++  if (t->p_state & PTHREAD_CANCEL_ASYNCHRONOUS)
++  {
++    /* Dangerous asynchronous cancelling */
++    CONTEXT ctxt;
++
++    /* Already done? */
++    if (t->cancelled) return ESRCH;
++
++    ctxt.ContextFlags = CONTEXT_CONTROL;
++
++    SuspendThread(t->h);
++    GetThreadContext(t->h, &ctxt);
++#ifdef _M_X64
++    ctxt.Rip = (uintptr_t) _pthread_invoke_cancel;
++#else
++    ctxt.Eip = (uintptr_t) _pthread_invoke_cancel;
++#endif
++    SetThreadContext(t->h, &ctxt);
++
++    /* Also try deferred Cancelling */
++    t->cancelled = 1;
++
++    /* Notify everyone to look */
++    _InterlockedIncrement(&_pthread_cancelling);
++
++    ResumeThread(t->h);
++  }
++  else
++#endif
++  {
++    /* Safe deferred Cancelling */
++    t->cancelled = 1;
++
++    /* Notify everyone to look */
++    _InterlockedIncrement(&_pthread_cancelling);
++  }
++
++  return 0;
++}
++
++static unsigned _pthread_get_state(pthread_attr_t *attr, unsigned flag)
++{
++  return attr->p_state & flag;
++}
++
++static int _pthread_set_state(pthread_attr_t *attr, unsigned flag, unsigned val)
++{
++  if (~flag & val) return EINVAL;
++  attr->p_state &= ~flag;
++  attr->p_state |= val;
++
++  return 0;
++}
++
++int pthread_attr_init(pthread_attr_t *attr)
++{
++  attr->p_state = PTHREAD_DEFAULT_ATTR;
++  attr->stack = NULL;
++  attr->s_size = 0;
++  return 0;
++}
++
++int pthread_attr_destroy(pthread_attr_t *attr)
++{
++  /* No need to do anything */
++  return 0;
++}
++
++
++int pthread_attr_setdetachstate(pthread_attr_t *a, int flag)
++{
++  return _pthread_set_state(a, PTHREAD_CREATE_DETACHED, flag);
++}
++
++int pthread_attr_getdetachstate(pthread_attr_t *a, int *flag)
++{
++  *flag = _pthread_get_state(a, PTHREAD_CREATE_DETACHED);
++  return 0;
++}
++
++int pthread_attr_setinheritsched(pthread_attr_t *a, int flag)
++{
++  return _pthread_set_state(a, PTHREAD_INHERIT_SCHED, flag);
++}
++
++int pthread_attr_getinheritsched(pthread_attr_t *a, int *flag)
++{
++  *flag = _pthread_get_state(a, PTHREAD_INHERIT_SCHED);
++  return 0;
++}
++
++int pthread_attr_setscope(pthread_attr_t *a, int flag)
++{
++  return _pthread_set_state(a, PTHREAD_SCOPE_SYSTEM, flag);
++}
++
++int pthread_attr_getscope(pthread_attr_t *a, int *flag)
++{
++  *flag = _pthread_get_state(a, PTHREAD_SCOPE_SYSTEM);
++  return 0;
++}
++
++int pthread_attr_getstackaddr(pthread_attr_t *attr, void **stack)
++{
++  *stack = attr->stack;
++  return 0;
++}
++
++int pthread_attr_setstackaddr(pthread_attr_t *attr, void *stack)
++{
++  attr->stack = stack;
++  return 0;
++}
++
++int pthread_attr_getstacksize(pthread_attr_t *attr, size_t *size)
++{
++  *size = attr->s_size;
++  return 0;
++}
++
++int pthread_attr_setstacksize(pthread_attr_t *attr, size_t size)
++{
++  attr->s_size = size;
++  return 0;
++}
++
++#define pthread_attr_getguardsize(A, S) ENOTSUP
++#define pthread_attr_setgaurdsize(A, S) ENOTSUP
++#define pthread_attr_getschedparam(A, S) ENOTSUP
++#define pthread_attr_setschedparam(A, S) ENOTSUP
++#define pthread_attr_getschedpolicy(A, S) ENOTSUP
++#define pthread_attr_setschedpolicy(A, S) ENOTSUP
++
++
++int pthread_setcancelstate(int state, int *oldstate)
++{
++  pthread_t t = pthread_self();
++
++  if ((state & PTHREAD_CANCEL_ENABLE) != state) return EINVAL;
++  if (oldstate) *oldstate = t->p_state & PTHREAD_CANCEL_ENABLE;
++  t->p_state &= ~PTHREAD_CANCEL_ENABLE;
++  t->p_state |= state;
++
++  return 0;
++}
++
++int pthread_setcanceltype(int type, int *oldtype)
++{
++  pthread_t t = pthread_self();
++
++  if ((type & PTHREAD_CANCEL_ASYNCHRONOUS) != type) return EINVAL;
++  if (oldtype) *oldtype = t->p_state & PTHREAD_CANCEL_ASYNCHRONOUS;
++  t->p_state &= ~PTHREAD_CANCEL_ASYNCHRONOUS;
++  t->p_state |= type;
++
++  return 0;
++}
++
++unsigned __stdcall pthread_create_wrapper(void *args)
++{
++  struct _pthread_v *tv = (struct _pthread_v*)args;
++
++  _pthread_once_raw(&_pthread_tls_once, pthread_tls_init);
++
++  TlsSetValue(_pthread_tls, tv);
++
++  if (!setjmp(tv->jb))
++  {
++    /* Call function and save return value */
++    tv->ret_arg = tv->func(tv->ret_arg);
++
++    /* Clean up destructors */
++    _pthread_cleanup_dest(tv);
++  }
++
++  /* If we exit too early, then we can race with create */
++  while (tv->h == (HANDLE) -1)
++  {
++    YieldProcessor();
++    _ReadWriteBarrier();
++  }
++
++  /* Make sure we free ourselves if we are detached */
++  if (!tv->h) free(tv);
++
++  return 0;
++}
++
++int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(void *), void *arg)
++{
++  struct _pthread_v *tv = (struct _pthread_v*)malloc(sizeof(struct _pthread_v));
++  unsigned ssize = 0;
++
++  if (!tv) return 1;
++
++  *th = tv;
++
++  /* Save data in pthread_t */
++  tv->ret_arg = arg;
++  tv->func = func;
++  tv->clean = NULL;
++  tv->cancelled = 0;
++  tv->p_state = PTHREAD_DEFAULT_ATTR;
++  tv->keymax = 0;
++  tv->keyval = NULL;
++  tv->h = (HANDLE) -1;
++
++  if (attr)
++  {
++    tv->p_state = attr->p_state;
++    ssize = (unsigned) attr->s_size;
++  }
++
++  /* Make sure tv->h has value of -1 */
++  _ReadWriteBarrier();
++
++  tv->h = (HANDLE) _beginthreadex(NULL, ssize, pthread_create_wrapper, tv, 0, NULL);
++
++  /* Failed */
++  if (!tv->h) return 1;
++
++  if (tv->p_state & PTHREAD_CREATE_DETACHED)
++  {
++    CloseHandle(tv->h);
++    _ReadWriteBarrier();
++    tv->h = 0;
++  }
++
++  return 0;
++}
++
++int pthread_join(pthread_t t, void **res)
++{
++  struct _pthread_v *tv = t;
++
++  pthread_testcancel();
++
++  WaitForSingleObject(tv->h, INFINITE);
++  CloseHandle(tv->h);
++
++  /* Obtain return value */
++  if (res) *res = tv->ret_arg;
++
++  free(tv);
++
++  return 0;
++}
++
++int pthread_detach(pthread_t t)
++{
++  struct _pthread_v *tv = t;
++
++  /*
++   * This can't race with thread exit because
++   * our call would be undefined if called on a dead thread.
++   */
++
++  CloseHandle(tv->h);
++  _ReadWriteBarrier();
++  tv->h = 0;
++
++  return 0;
++}
++
++int pthread_mutexattr_init(pthread_mutexattr_t *a)
++{
++  *a = 0;
++  return 0;
++}
++
++int pthread_mutexattr_destroy(pthread_mutexattr_t *a)
++{
++  (void) a;
++  return 0;
++}
++
++int pthread_mutexattr_gettype(pthread_mutexattr_t *a, int *type)
++{
++  *type = *a & 3;
++
++  return 0;
++}
++
++int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type)
++{
++  if ((unsigned) type > 3) return EINVAL;
++  *a &= ~3;
++  *a |= type;
++
++  return 0;
++}
++
++int pthread_mutexattr_getpshared(pthread_mutexattr_t *a, int *type)
++{
++  *type = *a & 4;
++
++  return 0;
++}
++
++int pthread_mutexattr_setpshared(pthread_mutexattr_t * a, int type)
++{
++  if ((type & 4) != type) return EINVAL;
++
++  *a &= ~4;
++  *a |= type;
++
++  return 0;
++}
++
++int pthread_mutexattr_getprotocol(pthread_mutexattr_t *a, int *type)
++{
++  *type = *a & (8 + 16);
++
++  return 0;
++}
++
++int pthread_mutexattr_setprotocol(pthread_mutexattr_t *a, int type)
++{
++  if ((type & (8 + 16)) != 8 + 16) return EINVAL;
++
++  *a &= ~(8 + 16);
++  *a |= type;
++
++  return 0;
++}
++
++int pthread_mutexattr_getprioceiling(pthread_mutexattr_t *a, int * prio)
++{
++  *prio = *a / PTHREAD_PRIO_MULT;
++  return 0;
++}
++
++int pthread_mutexattr_setprioceiling(pthread_mutexattr_t *a, int prio)
++{
++  *a &= (PTHREAD_PRIO_MULT - 1);
++  *a += prio * PTHREAD_PRIO_MULT;
++
++  return 0;
++}
++
++int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
++{
++  unsigned long long t, ct;
++
++  struct _pthread_crit_t
++  {
++    void *debug;
++    LONG count;
++    LONG r_count;
++    HANDLE owner;
++    HANDLE sem;
++    ULONG_PTR spin;
++  };
++
++  /* Try to lock it without waiting */
++  if (!pthread_mutex_trylock(m)) return 0;
++
++  ct = _pthread_time_in_ms();
++  t = _pthread_time_in_ms_from_timespec(ts);
++
++  while (1)
++  {
++    /* Have we waited long enough? */
++    if (ct > t) return ETIMEDOUT;
++
++    /* Wait on semaphore within critical section */
++    WaitForSingleObject(((struct _pthread_crit_t *)m)->sem, (DWORD)(t - ct));
++
++    /* Try to grab lock */
++    if (!pthread_mutex_trylock(m)) return 0;
++
++    /* Get current time */
++    ct = _pthread_time_in_ms();
++  }
++}
++
++#define _PTHREAD_BARRIER_FLAG (1<<30)
++
++int pthread_barrier_destroy(pthread_barrier_t *b)
++{
++  EnterCriticalSection(&b->m);
++
++  while (b->total > _PTHREAD_BARRIER_FLAG)
++  {
++    /* Wait until everyone exits the barrier */
++    SleepConditionVariableCS(&b->cv, &b->m, INFINITE);
++  }
++
++  LeaveCriticalSection(&b->m);
++
++  DeleteCriticalSection(&b->m);
++
++  return 0;
++}
++
++int pthread_barrier_init(pthread_barrier_t *b, void *attr, int count)
++{
++  /* Ignore attr */
++  (void) attr;
++
++  b->count = count;
++  b->total = 0;
++
++  InitializeCriticalSection(&b->m);
++  InitializeConditionVariable(&b->cv);
++
++  return 0;
++}
++
++int pthread_barrier_wait(pthread_barrier_t *b)
++{
++  EnterCriticalSection(&b->m);
++
++  while (b->total > _PTHREAD_BARRIER_FLAG)
++  {
++    /* Wait until everyone exits the barrier */
++    SleepConditionVariableCS(&b->cv, &b->m, INFINITE);
++  }
++
++  /* Are we the first to enter? */
++  if (b->total == _PTHREAD_BARRIER_FLAG) b->total = 0;
++
++  b->total++;
++
++  if (b->total == b->count)
++  {
++    b->total += _PTHREAD_BARRIER_FLAG - 1;
++    WakeAllConditionVariable(&b->cv);
++
++    LeaveCriticalSection(&b->m);
++
++    return 1;
++  }
++  else
++  {
++    while (b->total < _PTHREAD_BARRIER_FLAG)
++    {
++      /* Wait until enough threads enter the barrier */
++      SleepConditionVariableCS(&b->cv, &b->m, INFINITE);
++    }
++
++    b->total--;
++
++    /* Get entering threads to wake up */
++    if (b->total == _PTHREAD_BARRIER_FLAG) WakeAllConditionVariable(&b->cv);
++
++    LeaveCriticalSection(&b->m);
++
++    return 0;
++  }
++}
++
++int pthread_barrierattr_init(void **attr)
++{
++  *attr = NULL;
++  return 0;
++}
++
++int pthread_barrierattr_destroy(void **attr)
++{
++  /* Ignore attr */
++  (void) attr;
++
++  return 0;
++}
++
++int pthread_barrierattr_setpshared(void **attr, int s)
++{
++  *attr = (void *) s;
++  return 0;
++}
++
++int pthread_barrierattr_getpshared(void **attr, int *s)
++{
++  *s = (int) (size_t) *attr;
++
++  return 0;
++}
++
++int pthread_key_create(pthread_key_t *key, void (* dest)(void *))
++{
++  unsigned i;
++  unsigned nmax;
++  void (**d)(void *);
++
++  if (!key) return EINVAL;
++
++  pthread_rwlock_wrlock(&_pthread_key_lock);
++
++  for (i = _pthread_key_sch; i < _pthread_key_max; i++)
++  {
++    if (!_pthread_key_dest[i])
++    {
++      *key = i;
++      if (dest)
++      {
++        _pthread_key_dest[i] = dest;
++      }
++      else
++      {
++        _pthread_key_dest[i] = (void(*)(void *))1;
++      }
++      pthread_rwlock_unlock(&_pthread_key_lock);
++
++      return 0;
++    }
++  }
++
++  for (i = 0; i < _pthread_key_sch; i++)
++  {
++    if (!_pthread_key_dest[i])
++    {
++      *key = i;
++      if (dest)
++      {
++        _pthread_key_dest[i] = dest;
++      }
++      else
++      {
++        _pthread_key_dest[i] = (void(*)(void *))1;
++      }
++      pthread_rwlock_unlock(&_pthread_key_lock);
++
++      return 0;
++    }
++  }
++
++  if (!_pthread_key_max) _pthread_key_max = 1;
++  if (_pthread_key_max == PTHREAD_KEYS_MAX)
++  {
++    pthread_rwlock_unlock(&_pthread_key_lock);
++
++    return ENOMEM;
++  }
++
++  nmax = _pthread_key_max * 2;
++  if (nmax > PTHREAD_KEYS_MAX) nmax = PTHREAD_KEYS_MAX;
++
++  /* No spare room anywhere */
++  d = (void (**)(void*))realloc(_pthread_key_dest, nmax * sizeof(*d));
++  if (!d)
++  {
++    pthread_rwlock_unlock(&_pthread_key_lock);
++
++    return ENOMEM;
++  }
++
++  /* Clear new region */
++  memset((void *) &d[_pthread_key_max], 0, (nmax-_pthread_key_max)*sizeof(void *));
++
++  /* Use new region */
++  _pthread_key_dest = d;
++  _pthread_key_sch = _pthread_key_max + 1;
++  *key = _pthread_key_max;
++  _pthread_key_max = nmax;
++
++  if (dest)
++  {
++    _pthread_key_dest[*key] = dest;
++  }
++  else
++  {
++    _pthread_key_dest[*key] = (void(*)(void *))1;
++  }
++
++  pthread_rwlock_unlock(&_pthread_key_lock);
++
++  return 0;
++}
++
++int pthread_key_delete(pthread_key_t key)
++{
++  if (key > _pthread_key_max) return EINVAL;
++  if (!_pthread_key_dest) return EINVAL;
++
++  pthread_rwlock_wrlock(&_pthread_key_lock);
++  _pthread_key_dest[key] = NULL;
++
++  /* Start next search from our location */
++  if (_pthread_key_sch > key) _pthread_key_sch = key;
++
++  pthread_rwlock_unlock(&_pthread_key_lock);
++
++  return 0;
++}
++
++void *pthread_getspecific(pthread_key_t key)
++{
++  pthread_t t = pthread_self();
++
++  if (key >= t->keymax) return NULL;
++
++  return t->keyval[key];
++
++}
++
++int pthread_setspecific(pthread_key_t key, const void *value)
++{
++  pthread_t t = pthread_self();
++
++  if (key > t->keymax)
++  {
++    int keymax = (key + 1) * 2;
++    void **kv = (void**)realloc(t->keyval, keymax * sizeof(void *));
++
++    if (!kv) return ENOMEM;
++
++    /* Clear new region */
++    memset(&kv[t->keymax], 0, (keymax - t->keymax)*sizeof(void*));
++
++    t->keyval = kv;
++    t->keymax = keymax;
++  }
++
++  t->keyval[key] = (void *) value;
++
++  return 0;
++}
++
++
++int pthread_spin_init(pthread_spinlock_t *l, int pshared)
++{
++  (void) pshared;
++
++  *l = 0;
++  return 0;
++}
++
++int pthread_spin_destroy(pthread_spinlock_t *l)
++{
++  (void) l;
++  return 0;
++}
++
++/* No-fair spinlock due to lack of knowledge of thread number */
++int pthread_spin_lock(pthread_spinlock_t *l)
++{
++  while (_InterlockedExchange(l, EBUSY))
++  {
++    /* Don't lock the bus whilst waiting */
++    while (*l)
++    {
++      YieldProcessor();
++
++      /* Compiler barrier.  Prevent caching of *l */
++      _ReadWriteBarrier();
++    }
++  }
++
++  return 0;
++}
++
++int pthread_spin_trylock(pthread_spinlock_t *l)
++{
++  return _InterlockedExchange(l, EBUSY);
++}
++
++int pthread_spin_unlock(pthread_spinlock_t *l)
++{
++  /* Compiler barrier.  The store below acts with release symmantics */
++  _ReadWriteBarrier();
++
++  *l = 0;
++
++  return 0;
++}
++
++int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a)
++{
++  (void) a;
++
++  InitializeConditionVariable(c);
++  return 0;
++}
++
++int pthread_cond_signal(pthread_cond_t *c)
++{
++  WakeConditionVariable(c);
++  return 0;
++}
++
++int pthread_cond_broadcast(pthread_cond_t *c)
++{
++  WakeAllConditionVariable(c);
++  return 0;
++}
++
++int pthread_cond_wait(pthread_cond_t *c, pthread_mutex_t *m)
++{
++  pthread_testcancel();
++  SleepConditionVariableCS(c, m, INFINITE);
++  return 0;
++}
++
++int pthread_cond_destroy(pthread_cond_t *c)
++{
++  (void) c;
++  return 0;
++}
++
++int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m, struct timespec *t)
++{
++  unsigned long long tm = _pthread_rel_time_in_ms(t);
++
++  pthread_testcancel();
++
++  if (!SleepConditionVariableCS(c, m, (DWORD)tm)) return ETIMEDOUT;
++
++  /* We can have a spurious wakeup after the timeout */
++  if (!_pthread_rel_time_in_ms(t)) return ETIMEDOUT;
++
++  return 0;
++}
++
++int pthread_condattr_destroy(pthread_condattr_t *a)
++{
++  (void) a;
++  return 0;
++}
++
++int pthread_condattr_init(pthread_condattr_t *a)
++{
++  *a = 0;
++  return 0;
++}
++
++int pthread_condattr_getpshared(pthread_condattr_t *a, int *s)
++{
++  *s = *a;
++  return 0;
++}
++
++int pthread_condattr_setpshared(pthread_condattr_t *a, int s)
++{
++  *a = s;
++  return 0;
++}
++
++int pthread_rwlockattr_destroy(pthread_rwlockattr_t *a)
++{
++  (void) a;
++  return 0;
++}
++
++int pthread_rwlockattr_init(pthread_rwlockattr_t *a)
++{
++  *a = 0;
++  return 0;
++}
++
++int pthread_rwlockattr_getpshared(pthread_rwlockattr_t *a, int *s)
++{
++  *s = *a;
++  return 0;
++}
++
++int pthread_rwlockattr_setpshared(pthread_rwlockattr_t *a, int s)
++{
++  *a = s;
++  return 0;
++}
+diff --git a/msvc/winpthreads.h b/msvc/winpthreads.h
+new file mode 100644
+index 0000000..ea289f3
+--- /dev/null
++++ b/msvc/winpthreads.h
+@@ -0,0 +1,338 @@
++/*
++ * Posix Threads library for Microsoft Windows
++ *
++ * Use at own risk, there is no implied warranty to this code.
++ * It uses undocumented features of Microsoft Windows that can change
++ * at any time in the future.
++ *
++ * (C) 2010 Lockless Inc.
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without modification,
++ * are permitted provided that the following conditions are met:
++ *
++ *
++ *  * Redistributions of source code must retain the above copyright notice,
++ *    this list of conditions and the following disclaimer.
++ *  * Redistributions in binary form must reproduce the above copyright notice,
++ *    this list of conditions and the following disclaimer in the documentation
++ *    and/or other materials provided with the distribution.
++ *  * Neither the name of Lockless Inc. nor the names of its contributors may be
++ *    used to endorse or promote products derived from this software without
++ *    specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AN
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
++ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
++ * IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
++ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
++ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
++ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
++ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
++ * OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#ifndef WIN_PTHREADS
++#define WIN_PTHREADS
++
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <windows.h>
++#include <errno.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#ifndef ETIMEDOUT
++#define ETIMEDOUT 110
++#endif
++#ifndef ENOTSUP
++#define ENOTSUP   134
++#endif
++
++#define PTHREAD_CANCEL_DISABLE 0
++#define PTHREAD_CANCEL_ENABLE 0x01
++
++#define PTHREAD_CANCEL_DEFERRED 0
++#define PTHREAD_CANCEL_ASYNCHRONOUS 0x02
++
++#define PTHREAD_CREATE_JOINABLE 0
++#define PTHREAD_CREATE_DETACHED 0x04
++
++#define PTHREAD_EXPLICT_SCHED 0
++#define PTHREAD_INHERIT_SCHED 0x08
++
++#define PTHREAD_SCOPE_PROCESS 0
++#define PTHREAD_SCOPE_SYSTEM 0x10
++
++#define PTHREAD_DEFAULT_ATTR (PTHREAD_CANCEL_ENABLE)
++
++#define PTHREAD_CANCELED ((void *) 0xDEADBEEF)
++
++#define PTHREAD_ONCE_INIT 0
++#define PTHREAD_MUTEX_INITIALIZER {(void*)-1,-1,0,0,0,0}
++#define PTHREAD_RWLOCK_INITIALIZER {0}
++#define PTHREAD_COND_INITIALIZER {0}
++#define PTHREAD_BARRIER_INITIALIZER \
++  {0,0,PTHREAD_MUTEX_INITIALIZER,PTHREAD_COND_INITIALIZER}
++#define PTHREAD_SPINLOCK_INITIALIZER 0
++
++#define PTHREAD_DESTRUCTOR_ITERATIONS 256
++#define PTHREAD_KEYS_MAX (1<<20)
++
++#define PTHREAD_MUTEX_NORMAL 0
++#define PTHREAD_MUTEX_ERRORCHECK 1
++#define PTHREAD_MUTEX_RECURSIVE 2
++#define PTHREAD_MUTEX_DEFAULT 3
++#define PTHREAD_MUTEX_SHARED 4
++#define PTHREAD_MUTEX_PRIVATE 0
++#define PTHREAD_PRIO_NONE 0
++#define PTHREAD_PRIO_INHERIT 8
++#define PTHREAD_PRIO_PROTECT 16
++#define PTHREAD_PRIO_MULT 32
++#define PTHREAD_PROCESS_SHARED 0
++#define PTHREAD_PROCESS_PRIVATE 1
++
++#define PTHREAD_BARRIER_SERIAL_THREAD 1
++
++/* Windows doesn't have this, so declare it ourselves. */
++#if (_MSC_VER < 1900)
++struct timespec
++{
++  /* long long in windows is the same as long in unix for 64bit */
++  long long tv_sec;
++  long long tv_nsec;
++};
++#else
++#include <time.h>
++#endif
++
++struct _pthread_v;
++typedef struct _pthread_v *pthread_t;
++
++struct pthread_barrier_t
++{
++  int count;
++  int total;
++  CRITICAL_SECTION m;
++  CONDITION_VARIABLE cv;
++};
++
++typedef struct pthread_barrier_t pthread_barrier_t;
++
++struct pthread_attr_t
++{
++  unsigned p_state;
++  void *stack;
++  size_t s_size;
++};
++
++typedef struct pthread_attr_t pthread_attr_t;
++
++typedef long pthread_once_t;
++typedef unsigned pthread_mutexattr_t;
++typedef SRWLOCK pthread_rwlock_t;
++typedef CRITICAL_SECTION pthread_mutex_t;
++typedef unsigned pthread_key_t;
++typedef void *pthread_barrierattr_t;
++typedef long pthread_spinlock_t;
++typedef int pthread_condattr_t;
++typedef CONDITION_VARIABLE pthread_cond_t;
++typedef int pthread_rwlockattr_t;
++
++extern pthread_t pthread_self(void);
++
++extern int pthread_once(pthread_once_t *o, void(*func)(void));
++
++extern int pthread_mutex_lock(pthread_mutex_t *m);
++
++extern int pthread_mutex_unlock(pthread_mutex_t *m);
++
++extern int pthread_mutex_trylock(pthread_mutex_t *m);
++
++extern int pthread_mutex_init(pthread_mutex_t *m, pthread_mutexattr_t *a);
++
++extern int pthread_mutex_destroy(pthread_mutex_t *m);
++
++#define pthread_mutex_getprioceiling(M, P) ENOTSUP
++#define pthread_mutex_setprioceiling(M, P) ENOTSUP
++
++extern int pthread_equal(pthread_t t1, pthread_t t2);
++
++extern int pthread_rwlock_init(pthread_rwlock_t *l, pthread_rwlockattr_t *a);
++
++extern int pthread_rwlock_destroy(pthread_rwlock_t *l);
++
++extern int pthread_rwlock_rdlock(pthread_rwlock_t *l);
++
++extern int pthread_rwlock_wrlock(pthread_rwlock_t *l);
++
++extern int pthread_rwlock_unlock(pthread_rwlock_t *l);
++
++extern int pthread_rwlock_tryrdlock(pthread_rwlock_t *l);
++
++extern int pthread_rwlock_trywrlock(pthread_rwlock_t *l);
++
++extern void pthread_tls_init(void);
++
++extern int pthread_rwlock_timedrdlock(pthread_rwlock_t *l, const struct timespec *ts);
++
++extern int pthread_rwlock_timedwrlock(pthread_rwlock_t *l, const struct timespec *ts);
++
++extern int pthread_get_concurrency(int *val);
++
++extern int pthread_set_concurrency(int val);
++
++#define pthread_getschedparam(T, P, S) ENOTSUP
++#define pthread_setschedparam(T, P, S) ENOTSUP
++#define pthread_getcpuclockid(T, C) ENOTSUP
++
++extern int pthread_exit(void *res);
++
++extern void pthread_testcancel(void);
++
++extern int pthread_cancel(pthread_t t);
++
++extern int pthread_attr_init(pthread_attr_t *attr);
++
++extern int pthread_attr_destroy(pthread_attr_t *attr);
++
++extern int pthread_attr_setdetachstate(pthread_attr_t *a, int flag);
++
++extern int pthread_attr_getdetachstate(pthread_attr_t *a, int *flag);
++
++extern int pthread_attr_setinheritsched(pthread_attr_t *a, int flag);
++
++extern int pthread_attr_getinheritsched(pthread_attr_t *a, int *flag);
++
++extern int pthread_attr_setscope(pthread_attr_t *a, int flag);
++
++extern int pthread_attr_getscope(pthread_attr_t *a, int *flag);
++
++extern int pthread_attr_getstackaddr(pthread_attr_t *attr, void **stack);
++
++extern int pthread_attr_setstackaddr(pthread_attr_t *attr, void *stack);
++
++extern int pthread_attr_getstacksize(pthread_attr_t *attr, size_t *size);
++
++extern int pthread_attr_setstacksize(pthread_attr_t *attr, size_t size);
++
++#define pthread_attr_getguardsize(A, S) ENOTSUP
++#define pthread_attr_setgaurdsize(A, S) ENOTSUP
++#define pthread_attr_getschedparam(A, S) ENOTSUP
++#define pthread_attr_setschedparam(A, S) ENOTSUP
++#define pthread_attr_getschedpolicy(A, S) ENOTSUP
++#define pthread_attr_setschedpolicy(A, S) ENOTSUP
++
++extern int pthread_setcancelstate(int state, int *oldstate);
++
++extern int pthread_setcanceltype(int type, int *oldtype);
++
++extern unsigned __stdcall pthread_create_wrapper(void *args);
++
++extern int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(*func)(void *), void *arg);
++
++extern int pthread_join(pthread_t t, void **res);
++
++extern int pthread_detach(pthread_t t);
++
++extern int pthread_mutexattr_init(pthread_mutexattr_t *a);
++
++extern int pthread_mutexattr_destroy(pthread_mutexattr_t *a);
++
++extern int pthread_mutexattr_gettype(pthread_mutexattr_t *a, int *type);
++
++extern int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type);
++
++extern int pthread_mutexattr_getpshared(pthread_mutexattr_t *a, int *type);
++
++extern int pthread_mutexattr_setpshared(pthread_mutexattr_t * a, int type);
++
++extern int pthread_mutexattr_getprotocol(pthread_mutexattr_t *a, int *type);
++
++extern int pthread_mutexattr_setprotocol(pthread_mutexattr_t *a, int type);
++
++extern int pthread_mutexattr_getprioceiling(pthread_mutexattr_t *a, int * prio);
++
++extern int pthread_mutexattr_setprioceiling(pthread_mutexattr_t *a, int prio);
++
++extern int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts);
++
++extern int pthread_barrier_destroy(pthread_barrier_t *b);
++
++extern int pthread_barrier_init(pthread_barrier_t *b, void *attr, int count);
++
++extern int pthread_barrier_wait(pthread_barrier_t *b);
++
++extern int pthread_barrierattr_init(void **attr);
++
++extern int pthread_barrierattr_destroy(void **attr);
++
++extern int pthread_barrierattr_setpshared(void **attr, int s);
++
++extern int pthread_barrierattr_getpshared(void **attr, int *s);
++
++extern int pthread_key_create(pthread_key_t *key, void(*dest)(void *));
++
++extern int pthread_key_delete(pthread_key_t key);
++
++extern void *pthread_getspecific(pthread_key_t key);
++
++extern int pthread_setspecific(pthread_key_t key, const void *value);
++
++extern int pthread_spin_init(pthread_spinlock_t *l, int pshared);
++
++extern int pthread_spin_destroy(pthread_spinlock_t *l);
++
++extern int pthread_spin_lock(pthread_spinlock_t *l);
++
++extern int pthread_spin_trylock(pthread_spinlock_t *l);
++
++extern int pthread_spin_unlock(pthread_spinlock_t *l);
++
++extern int pthread_cond_init(pthread_cond_t *c, pthread_condattr_t *a);
++
++extern int pthread_cond_signal(pthread_cond_t *c);
++
++extern int pthread_cond_broadcast(pthread_cond_t *c);
++
++extern int pthread_cond_wait(pthread_cond_t *c, pthread_mutex_t *m);
++
++extern int pthread_cond_destroy(pthread_cond_t *c);
++
++extern int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m, struct timespec *t);
++
++extern int pthread_condattr_destroy(pthread_condattr_t *a);
++
++#define pthread_condattr_getclock(A, C) ENOTSUP
++#define pthread_condattr_setclock(A, C) ENOTSUP
++
++extern int pthread_condattr_init(pthread_condattr_t *a);
++
++extern int pthread_condattr_getpshared(pthread_condattr_t *a, int *s);
++
++extern int pthread_condattr_setpshared(pthread_condattr_t *a, int s);
++
++extern int pthread_rwlockattr_destroy(pthread_rwlockattr_t *a);
++
++extern int pthread_rwlockattr_init(pthread_rwlockattr_t *a);
++
++extern int pthread_rwlockattr_getpshared(pthread_rwlockattr_t *a, int *s);
++
++extern int pthread_rwlockattr_setpshared(pthread_rwlockattr_t *a, int s);
++
++/* No fork() in windows - so ignore this */
++#define pthread_atfork(F1,F2,F3) 0
++
++/* Windows has rudimentary signals support */
++#define pthread_kill(T, S) 0
++#define pthread_sigmask(H, S1, S2) 0
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* WIN_PTHREADS */
+diff --git a/src/netbios_ns.c b/src/netbios_ns.c
+index ff37c55..104779a 100644
+--- a/src/netbios_ns.c
++++ b/src/netbios_ns.c
+@@ -37,7 +37,11 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <stdbool.h>
++#ifdef HAVE_WINPTHREADS
++#include <winpthreads.h>
++#else
+ #include <pthread.h>
++#endif
+ #ifdef HAVE_SYS_TIME_H
+ #include <sys/time.h>
+ #endif
+@@ -56,6 +60,7 @@
+ #ifdef _WIN32
+ # include <winsock2.h>
+ # include <ws2tcpip.h>
++typedef long ssize_t;
+ #endif
+ #ifdef HAVE_SYS_SOCKET_H
+ # include <sys/socket.h>
+diff --git a/src/netbios_session.h b/src/netbios_session.h
+index abb89f6..8a71da3 100644
+--- a/src/netbios_session.h
++++ b/src/netbios_session.h
+@@ -38,6 +38,7 @@
+ # include <netinet/in.h>
+ #else
+ # include <winsock2.h>
++typedef long ssize_t;
+ #endif
+ 
+ #include "netbios_defs.h"
+diff --git a/src/smb_message.c b/src/smb_message.c
+index d7717a6..2ddadd8 100644
+--- a/src/smb_message.c
++++ b/src/smb_message.c
+@@ -44,6 +44,9 @@
+ #include "smb_utils.h"
+ 
+ #define PAYLOAD_BLOCK_SIZE 256
++#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_APP)
++#define getpig GetCurrentProcessId
++#endif
+ 
+ static int     smb_message_expand_payload(smb_message *msg, size_t cursor, size_t data_size)
+ {
+diff --git a/src/smb_ntlm.c b/src/smb_ntlm.c
+index 998afd3..261e042 100644
+--- a/src/smb_ntlm.c
++++ b/src/smb_ntlm.c
+@@ -32,8 +32,8 @@
+ # include "config.h"
+ #endif
+ 
+-#ifdef _WIN32
+-# define _CRT_RAND_S
++#ifdef _MSC_VER
++# include <malloc.h>
+ #endif
+ 
+ #include <assert.h>
+diff --git a/src/smb_share.c b/src/smb_share.c
+index 887e6ab..8414ab7 100644
+--- a/src/smb_share.c
++++ b/src/smb_share.c
+@@ -37,6 +37,7 @@
+ #include <unistd.h>
+ #include <string.h>
+ #include <stdio.h>
++#include <malloc.h>
+ 
+ #include "bdsm_debug.h"
+ #include "smb_session_msg.h"
+diff --git a/src/smb_types.h b/src/smb_types.h
+index dea32aa..5ca9919 100644
+--- a/src/smb_types.h
++++ b/src/smb_types.h
+@@ -45,6 +45,7 @@
+ # include <netinet/ip.h>
+ #else
+ # include <winsock2.h>
++typedef long ssize_t;
+ #endif
+ 
+ #include "bdsm/smb_types.h"
+-- 
+2.10.2.windows.1
+
