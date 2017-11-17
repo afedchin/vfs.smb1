@@ -10,6 +10,15 @@
     protocols="smb"
     files="true"
     directories="true"
+    zeroconf="_smb._tcp."
+    supportPath="true"
+    supportUsername="true"
+    supportPassword="true"
+    supportPort="false"
+    supportBrowsing="true"
+    supportDialog="true"
+    defaultPort="0"
+    label="20171"
     library_@PLATFORM@="@LIBRARY_FILENAME@" />
   <extension point="xbmc.addon.metadata">
     <summary lang="en">SMB support</summary>
