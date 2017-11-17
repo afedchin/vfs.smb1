@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..e90682a
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,102 @@
 +cmake_minimum_required(VERSION 3.0)
 +
 +project(libdsm VERSION 0.2.8 LANGUAGES C)
@@ -11,21 +11,6 @@ index 0000000..e90682a
 +find_package(iconv REQUIRED NO_MODULE)
 +find_package(libtasn1 REQUIRED NO_MODULE)
 +find_package(openssl)
-+
-+add_library(compat 
-+  compat/clock_gettime.c
-+  compat/compat.c
-+  compat/compat.h
-+  compat/queue.h
-+  compat/strlcpy.c
-+  compat/strndup.c
-+  msvc/winpthreads.c
-+  msvc/winpthreads.h)
-+
-+target_include_directories(compat
-+  PRIVATE
-+  $<BUILD_INTERFACE:compat;msvc>
-+)
 +
 +set(contrib_SOURCES 
 +  contrib/rc4/rc4.c
@@ -41,19 +26,21 @@ index 0000000..e90682a
 +    contrib/mdx/md5.h)
 +endif()
 +
-+add_library(contrib ${contrib_SOURCES})
-+target_include_directories(contrib
-+  PRIVATE
-+  $<BUILD_INTERFACE:contrib;compat;msvc;${OPENSSL_INCLUDE_DIRS}>
-+)
-+target_link_libraries(contrib PRIVATE libtasn1::libtasn1)
-+
 +file(GLOB_RECURSE LIBDSM_SOURCES ${CMAKE_SOURCE_DIR}/src/*.c)
 +file(GLOB_RECURSE LIBDSM_HEADERS ${CMAKE_SOURCE_DIR}/src/*.h)
 +
 +add_library(libdsm STATIC
-+		${LIBDSM_SOURCES}
-+		${LIBDSM_HEADERS})
++  compat/clock_gettime.c
++  compat/compat.c
++  compat/compat.h
++  compat/queue.h
++  compat/strlcpy.c
++  compat/strndup.c
++  msvc/winpthreads.c
++  msvc/winpthreads.h
++  ${contrib_SOURCES}
++  ${LIBDSM_SOURCES}
++  ${LIBDSM_HEADERS})
 +
 +add_definitions(-DHAVE_CONFIG_H -D_WINSOCK_DEPRECATED_NO_WARNINGS -D_CRT_SECURE_NO_WARNINGS 
 +				-D_CRT_RAND_S -DASN1_STATIC)
@@ -87,7 +74,7 @@ index 0000000..e90682a
 +  COMPATIBILITY AnyNewerVersion
 +)
 +
-+install(TARGETS libdsm contrib compat EXPORT ${PROJECT_NAME}
++install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}
 +  RUNTIME DESTINATION bin
 +  LIBRARY DESTINATION lib
 +  ARCHIVE DESTINATION lib
