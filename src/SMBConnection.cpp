@@ -24,11 +24,13 @@
 
 #include <kodi/Filesystem.h>
 #include <kodi/General.h>
-#include <kodi/Network.h>
+#include <WS2tcpip.h>
+#include <Network.h>
 
 extern "C"
 {
 #include <bdsm.h>
+#include <bdsm/netbios_defs.h>
 }
 
 CSMBConnection& CSMBConnection::Get()
@@ -57,10 +59,32 @@ bool CSMBConnection::Connect(const VFSURL& url)
   P8PLATFORM::CLockObject lock(*this);
 
   smb_url* smburl = SMBParseUrl(url.url);
-  netbios_ns* ns = netbios_ns_new();
-
-  if (netbios_ns_resolve(ns, smburl->server, NETBIOS_FILESERVER, &m_addr))
+  if (!smburl)
+  {
+    kodi::Log(ADDON_LOG_ERROR, "Failed to parse SMB url");
     return false;
+  }
+
+  // check if server is IP address
+  if (inet_pton(AF_INET, smburl->server, &m_addr) != 1)
+  {
+    // 1. try dns lookup
+    std::string ip_address;
+    if (kodi::network::DNSLookup(smburl->server, ip_address))
+    {
+      inet_pton(AF_INET, ip_address.c_str(), &m_addr);
+    }
+    else
+    {
+      // the last chance to resolve name
+      netbios_ns* ns = netbios_ns_new();
+      int ns_res = netbios_ns_resolve(ns, smburl->server, NETBIOS_FILESERVER, &m_addr);
+      netbios_ns_destroy(ns);
+
+      if(ns_res)
+        return false;
+    }
+  }
 
   if(m_hostName != url.hostname || m_pSmbContext)
   {
@@ -116,12 +140,27 @@ bool CSMBConnection::GetShares(const VFSURL & url, std::vector<kodi::vfs::CDirEn
 {
   uint32_t ip;
   smb_url* smburl = SMBParseUrl(url.url);
-  netbios_ns* ns = netbios_ns_new();
   smb_session *session = nullptr;
 
-  if (netbios_ns_resolve(ns, smburl->server, NETBIOS_FILESERVER, &ip))
+  // check if server is IP address
+  if (inet_pton(AF_INET, smburl->server, &ip) != 1)
   {
-    goto failed;
+    // 1. try dns lookup
+    std::string ip_address;
+    if (kodi::network::DNSLookup(smburl->server, ip_address))
+    {
+      inet_pton(AF_INET, ip_address.c_str(), &ip);
+    }
+    else
+    {
+      // the last chance to resolve name
+      netbios_ns* ns = netbios_ns_new();
+      int ns_ret = netbios_ns_resolve(ns, smburl->server, NETBIOS_FILESERVER, &ip);
+      netbios_ns_destroy(ns);
+
+      if (ns_ret)
+        return false;
+    }
   }
 
   session = smb_session_new();
@@ -185,13 +224,10 @@ bool CSMBConnection::GetShares(const VFSURL & url, std::vector<kodi::vfs::CDirEn
   }
   smb_share_list_destroy(share_list);
   smb_session_destroy(session);
-  netbios_ns_destroy(ns);
 
   return true;
 
 failed:
-  if (ns)
-    netbios_ns_destroy(ns);
   if (session)
     smb_session_destroy(session);
 

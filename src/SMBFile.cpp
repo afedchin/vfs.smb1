@@ -21,9 +21,9 @@
 #include "p8-platform/threads/mutex.h"
 #include <fcntl.h>
 #include <inttypes.h>
-#include <sstream>
 #include <iostream>
 #include <algorithm>
+#include <WS2tcpip.h>
 
 extern "C"
 {
@@ -46,16 +46,17 @@ CSMBFile::~CSMBFile()
 
 void* CSMBFile::Open(const VFSURL& url)
 {
-  int ret = 0;
   P8PLATFORM::CLockObject lock(CSMBConnection::Get());
 
-  smb_url *smburl = nullptr;
-  smburl = CSMBConnection::SMBParseUrl(url.url);
-
-  if(!CSMBConnection::Get().Connect(url))
+  smb_url *smburl = CSMBConnection::SMBParseUrl(url.url);
+  if (!smburl)
   {
+    kodi::Log(ADDON_LOG_ERROR, "Unable to parce url %s", url.url);
     return nullptr;
   }
+
+  if(!CSMBConnection::Get().Connect(url))
+    return nullptr;
 
   SMBContext* result = new SMBContext;
   result->pSession = CSMBConnection::Get().GetSmbContext();
@@ -95,7 +96,7 @@ void* CSMBFile::Open(const VFSURL& url)
 
 ssize_t CSMBFile::Read(void* context, void* lpBuf, size_t uiBufSize)
 {
-  SMBContext* ctx = (SMBContext*)context;
+  SMBContext* ctx = static_cast<SMBContext*>(context);
   if (!ctx || !ctx->pFileHandle|| !ctx->pSession)
     return -1;
 
@@ -112,16 +113,13 @@ ssize_t CSMBFile::Read(void* context, void* lpBuf, size_t uiBufSize)
 
 int64_t CSMBFile::Seek(void* context, int64_t iFilePosition, int iWhence)
 {
-  SMBContext* ctx = (SMBContext*)context;
+  SMBContext* ctx = static_cast<SMBContext*>(context);
   if (!ctx || !ctx->pFileHandle|| !ctx->pSession)
     return 0;
 
-  int64_t ret = 0;
-  uint64_t offset = 0;
-
   P8PLATFORM::CLockObject lock(CSMBConnection::Get());
 
-  ret = smb_fseek(ctx->pSession, ctx->pFileHandle, iFilePosition, iWhence);
+  int64_t ret = smb_fseek(ctx->pSession, ctx->pFileHandle, iFilePosition, iWhence);
   if (ret < 0)
   {
     kodi::Log(ADDON_LOG_ERROR, "%s - Error( seekpos: %" PRId64 ", whence: %i, fsize: %" PRId64 ", %d)",
@@ -136,7 +134,7 @@ int64_t CSMBFile::GetLength(void* context)
   if (!context)
     return 0;
 
-  SMBContext* ctx = (SMBContext*)context;
+  SMBContext* ctx = static_cast<SMBContext*>(context);
   return ctx->size;
 }
 
@@ -145,15 +143,15 @@ int64_t CSMBFile::GetPosition(void* context)
   if (!context)
     return 0;
 
-  SMBContext* ctx = (SMBContext*)context;
-  int64_t ret = 0;
-  uint64_t offset = 0;
+  SMBContext* ctx = static_cast<SMBContext*>(context);
 
   if (CSMBConnection::Get().GetSmbContext() == nullptr || !ctx->pFileHandle)
     return 0;
 
   P8PLATFORM::CLockObject lock(CSMBConnection::Get());
-  ret = smb_fseek(CSMBConnection::Get().GetSmbContext(), ctx->pFileHandle, offset, SMB_SEEK_CUR);
+
+  uint64_t offset = 0;
+  int64_t ret = smb_fseek(CSMBConnection::Get().GetSmbContext(), ctx->pFileHandle, offset, SMB_SEEK_CUR);
   if (ret < 0)
   {
     kodi::Log(ADDON_LOG_ERROR, "SMB: Failed to lseek(%d)", smb_session_get_nt_status(CSMBConnection::Get().GetSmbContext()));
@@ -173,13 +171,15 @@ int CSMBFile::Stat(const VFSURL& url, struct __stat64* buffer)
 {
   P8PLATFORM::CLockObject lock(CSMBConnection::Get());
 
-  smb_url *smburl = nullptr;
-  smburl = CSMBConnection::SMBParseUrl(url.url);
-
-  if (!CSMBConnection::Get().Connect(url))
+  smb_url *smburl = CSMBConnection::SMBParseUrl(url.url);
+  if (!smburl)
   {
+    kodi::Log(ADDON_LOG_ERROR, "Unable to parce url %s", url.url);
     return 0;
   }
+
+  if (!CSMBConnection::Get().Connect(url))
+    return 0;
 
   smb_fd fd;
   smb_session* session = CSMBConnection::Get().GetSmbContext();
@@ -250,11 +250,9 @@ bool CSMBFile::Exists(const VFSURL& url)
 bool CSMBFile::GetDirectory(const VFSURL& url, std::vector<kodi::vfs::CDirEntry>& items, CVFSCallbacks callbacks)
 {
   P8PLATFORM::CLockObject lock(CSMBConnection::Get());
-  netbios_ns* ns = nullptr;
   smb_session *session = nullptr;
-  smb_url *smburl = nullptr;
 
-  smburl = CSMBConnection::SMBParseUrl(url.url);
+  smb_url *smburl = CSMBConnection::SMBParseUrl(url.url);
   if (!smburl)
   {
     kodi::Log(ADDON_LOG_ERROR, "Failed to parse url: %s", url.url);
@@ -274,11 +272,15 @@ bool CSMBFile::GetDirectory(const VFSURL& url, std::vector<kodi::vfs::CDirEntry>
   {
     // browse shares on a server
     uint32_t ip;
-
-    ns = netbios_ns_new();
-    if (netbios_ns_resolve(ns, smburl->server, NETBIOS_FILESERVER, &ip))
+    // check if server is IP address
+    if (inet_pton(AF_INET, smburl->server, &ip) != 1)
     {
-      goto failed;
+      netbios_ns * ns = netbios_ns_new();
+      int ns_ret = netbios_ns_resolve(ns, smburl->server, NETBIOS_FILESERVER, &ip);
+      netbios_ns_destroy(ns);
+
+      if(ns_ret)
+        return false;
     }
 
     session = smb_session_new();
@@ -351,12 +353,9 @@ bool CSMBFile::GetDirectory(const VFSURL& url, std::vector<kodi::vfs::CDirEntry>
     }
     smb_share_list_destroy(share_list);
     smb_session_destroy(session);
-    netbios_ns_destroy(ns);
 
     return true;
   failed:
-    if (ns)
-      netbios_ns_destroy(ns);
     if (session)
       smb_session_destroy(session);
     return false;
@@ -370,7 +369,6 @@ bool CSMBFile::GetDirectory(const VFSURL& url, std::vector<kodi::vfs::CDirEntry>
 
     smb_session* session = CSMBConnection::Get().GetSmbContext();
     smb_tid tid = CSMBConnection::Get().GetTreeId();
-    smb_file *files = nullptr;
     smb_stat st;
 
     std::string path = std::string(smburl->path);
@@ -381,7 +379,7 @@ bool CSMBFile::GetDirectory(const VFSURL& url, std::vector<kodi::vfs::CDirEntry>
     else
       path += "\\*";
 
-    files = smb_find(session, tid, path.c_str());
+    smb_file *files = smb_find(session, tid, path.c_str());
     size_t files_count = smb_stat_list_count(files);
     for (size_t i = 0; i < files_count; i++)
     {
